@@ -1,19 +1,48 @@
 create extension if not exists "pgcrypto";
 
-create type lead_status as enum ('new', 'contacted', 'quoted', 'confirmed', 'completed', 'cancelled');
-create type order_status as enum ('draft', 'confirmed', 'in_progress', 'ready', 'delivered', 'cancelled');
-create type media_type as enum ('image', 'video');
-create type media_source as enum ('upload', 'drive_link');
-create type app_role as enum ('admin', 'customer');
+do $$
+begin
+  create type lead_status as enum ('new', 'contacted', 'quoted', 'confirmed', 'completed', 'cancelled');
+exception
+  when duplicate_object then null;
+end $$;
 
-create table profiles (
+do $$
+begin
+  create type order_status as enum ('draft', 'confirmed', 'in_progress', 'ready', 'delivered', 'cancelled');
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  create type media_type as enum ('image', 'video');
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  create type media_source as enum ('upload', 'drive_link');
+exception
+  when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  create type app_role as enum ('admin', 'customer');
+exception
+  when duplicate_object then null;
+end $$;
+
+create table if not exists profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   email text not null,
   role app_role not null default 'customer',
   created_at timestamptz not null default now()
 );
 
-create table categories (
+create table if not exists categories (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   slug text not null unique,
@@ -22,7 +51,7 @@ create table categories (
   created_at timestamptz not null default now()
 );
 
-create table products (
+create table if not exists products (
   id uuid primary key default gen_random_uuid(),
   category_id uuid references categories(id) on delete set null,
   name text not null,
@@ -36,7 +65,7 @@ create table products (
   created_at timestamptz not null default now()
 );
 
-create table product_media (
+create table if not exists product_media (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references products(id) on delete cascade,
   media_type media_type not null default 'image',
@@ -48,7 +77,7 @@ create table product_media (
   created_at timestamptz not null default now()
 );
 
-create table leads (
+create table if not exists leads (
   id uuid primary key default gen_random_uuid(),
   customer_name text not null,
   phone text not null,
@@ -60,7 +89,7 @@ create table leads (
   created_at timestamptz not null default now()
 );
 
-create table orders (
+create table if not exists orders (
   id uuid primary key default gen_random_uuid(),
   lead_id uuid references leads(id) on delete set null,
   product_id uuid references products(id) on delete set null,
@@ -72,7 +101,7 @@ create table orders (
   created_at timestamptz not null default now()
 );
 
-create table site_settings (
+create table if not exists site_settings (
   id text primary key default 'site',
   brand_name text not null default 'Navishi Designs',
   hero_eyebrow text not null default 'Handcrafted bridal elegance',
@@ -84,11 +113,11 @@ create table site_settings (
   updated_at timestamptz not null default now()
 );
 
-create index products_category_idx on products(category_id);
-create index products_public_idx on products(is_active, sort_order);
-create index product_media_product_idx on product_media(product_id, sort_order);
-create index leads_status_idx on leads(status, created_at desc);
-create index orders_status_idx on orders(status, created_at desc);
+create index if not exists products_category_idx on products(category_id);
+create index if not exists products_public_idx on products(is_active, sort_order);
+create index if not exists product_media_product_idx on product_media(product_id, sort_order);
+create index if not exists leads_status_idx on leads(status, created_at desc);
+create index if not exists orders_status_idx on orders(status, created_at desc);
 
 create or replace function public.is_admin()
 returns boolean
@@ -113,19 +142,25 @@ alter table leads enable row level security;
 alter table orders enable row level security;
 alter table site_settings enable row level security;
 
+drop policy if exists "Admins can read profiles" on profiles;
 create policy "Admins can read profiles" on profiles
   for select using (public.is_admin());
 
+drop policy if exists "Public can read active categories" on categories;
 create policy "Public can read active categories" on categories
   for select using (is_active = true);
+drop policy if exists "Admins manage categories" on categories;
 create policy "Admins manage categories" on categories
   for all using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists "Public can read active products" on products;
 create policy "Public can read active products" on products
   for select using (is_active = true);
+drop policy if exists "Admins manage products" on products;
 create policy "Admins manage products" on products
   for all using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists "Public can read media for active products" on product_media;
 create policy "Public can read media for active products" on product_media
   for select using (
     exists (
@@ -134,19 +169,25 @@ create policy "Public can read media for active products" on product_media
         and products.is_active = true
     )
   );
+drop policy if exists "Admins manage media" on product_media;
 create policy "Admins manage media" on product_media
   for all using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists "Public can create leads" on leads;
 create policy "Public can create leads" on leads
   for insert with check (true);
+drop policy if exists "Admins manage leads" on leads;
 create policy "Admins manage leads" on leads
   for all using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists "Admins manage orders" on orders;
 create policy "Admins manage orders" on orders
   for all using (public.is_admin()) with check (public.is_admin());
 
+drop policy if exists "Public can read site settings" on site_settings;
 create policy "Public can read site settings" on site_settings
   for select using (id = 'site');
+drop policy if exists "Admins manage site settings" on site_settings;
 create policy "Admins manage site settings" on site_settings
   for all using (public.is_admin()) with check (public.is_admin());
 
@@ -174,9 +215,11 @@ insert into storage.buckets (id, name, public)
 values ('product-media', 'product-media', true)
 on conflict (id) do nothing;
 
+drop policy if exists "Public can read product media bucket" on storage.objects;
 create policy "Public can read product media bucket" on storage.objects
   for select using (bucket_id = 'product-media');
 
+drop policy if exists "Admins can manage product media bucket" on storage.objects;
 create policy "Admins can manage product media bucket" on storage.objects
   for all using (bucket_id = 'product-media' and public.is_admin())
   with check (bucket_id = 'product-media' and public.is_admin());
