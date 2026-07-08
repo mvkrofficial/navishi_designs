@@ -6,7 +6,11 @@ import { SiteHeader } from "@/components/site/site-header";
 import { listPublicProducts } from "@/features/products/product.service";
 import { getSiteSettings } from "@/features/settings/settings.service";
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams
+}: {
+  searchParams?: { enquiry?: string };
+}) {
   const [products, settings] = await Promise.all([listPublicProducts(), getSiteSettings()]);
 
   return (
@@ -68,6 +72,9 @@ export default async function HomePage() {
               <p className="panel-copy">
                 Share the product, event date, quantity, colour, or custom idea. Our team will reply personally.
               </p>
+              {searchParams?.enquiry === "sent" ? (
+                <p className="success-message">Enquiry sent. We will reply personally on WhatsApp or phone.</p>
+              ) : null}
             </div>
             <LeadForm products={products} />
           </div>
